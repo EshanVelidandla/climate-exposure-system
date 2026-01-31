@@ -1,0 +1,153 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database with PostGIS
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: cbi-postgres
+    environment:
+      POSTGRES_USER: cbi_user
+      POSTGRES_PASSWORD: cbi_password
+      POSTGRES_DB: climate_burden_index
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./sql/seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbi_user -d climate_burden_index"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cbi-network
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cbi-api
+    environment:
+      DATABASE_URL: postgresql://cbi_user:cbi_password@db:5432/climate_burden_index
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./models:/app/models
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - cbi-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: cbi-nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    networks:
+      - cbi-network
+
+  # Redis for Caching (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: cbi-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cbi-network
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.7.3
+    container_name: cbi-airflow-scheduler
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://cbi_user:cbi_password@db:5432/airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./src:/opt/airflow/src
+      - airflow_logs:/opt/airflow/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    command: scheduler
+    networks:
+      - cbi-network
+
+  # Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.7.3
+    container_name: cbi-airflow-webserver
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://cbi_user:cbi_password@db:5432/airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./src:/opt/airflow/src
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: webserver
+    networks:
+      - cbi-network
+
+  # Next.js Frontend
+  frontend:
+    image: node:18-alpine
+    container_name: cbi-frontend
+    working_dir: /app
+    volumes:
+      - ./src/frontend:/app
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: production
+    command: npm install && npm run build && npm start
+    depends_on:
+      - api
+    networks:
+      - cbi-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  airflow_logs:
+    driver: local
+
+networks:
+  cbi-network:
+    driver: bridge
