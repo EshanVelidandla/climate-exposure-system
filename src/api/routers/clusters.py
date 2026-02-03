@@ -8,7 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ...config import setup_logging, CLUSTERS_OUTPUT
+from ...config import setup_logging, CLUSTERS_OUTPUT, DEMO_MODE
 from ...utils import DatabaseManager
 
 logger = setup_logging(__name__)
@@ -43,6 +43,18 @@ class ClustersResponse(BaseModel):
     summaries: List[ClusterSummary]
 
 
+def _demo_clusters_response(method: str) -> ClustersResponse:
+    """Return sample cluster summaries when DEMO_MODE is on (no DB)."""
+    summaries = [
+        ClusterSummary(cluster_id=0, method=method, size=18000, avg_climate_burden_index=28.5, avg_vulnerability_score=0.32, geographic_distribution=None),
+        ClusterSummary(cluster_id=1, method=method, size=22000, avg_climate_burden_index=45.2, avg_vulnerability_score=0.48, geographic_distribution=None),
+        ClusterSummary(cluster_id=2, method=method, size=15000, avg_climate_burden_index=58.1, avg_vulnerability_score=0.61, geographic_distribution=None),
+        ClusterSummary(cluster_id=3, method=method, size=12000, avg_climate_burden_index=72.0, avg_vulnerability_score=0.74, geographic_distribution=None),
+        ClusterSummary(cluster_id=4, method=method, size=8000, avg_climate_burden_index=85.3, avg_vulnerability_score=0.82, geographic_distribution=None),
+    ]
+    return ClustersResponse(method=method, n_clusters=5, summaries=summaries)
+
+
 @router.get("", response_model=ClustersResponse)
 async def get_clusters(
     method: str = Query("kmeans", regex="^(kmeans|hdbscan)$", description="Clustering method")
@@ -52,8 +64,12 @@ async def get_clusters(
     
     Returns statistics for each cluster including size,
     average CBI, and vulnerability scores.
+    In DEMO_MODE (no DB), returns sample data.
     """
     logger.info(f"Clusters request: method={method}")
+    
+    if DEMO_MODE:
+        return _demo_clusters_response(method)
     
     try:
         db = get_db()

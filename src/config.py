@@ -53,6 +53,10 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", 8000))
 API_WORKERS = int(os.getenv("API_WORKERS", 4))
 
+# Demo mode: run API without PostgreSQL/Docker/API keys (returns sample data)
+_demo = os.getenv("DEMO_MODE", "").lower() in ("1", "true", "yes")
+DEMO_MODE = _demo
+
 # ML configuration
 TEST_SIZE = 0.2
 RANDOM_STATE = 42

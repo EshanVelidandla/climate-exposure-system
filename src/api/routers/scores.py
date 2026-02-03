@@ -9,9 +9,10 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 import pickle
 import numpy as np
+import pandas as pd
 import xgboost as xgb
 
-from ...config import setup_logging, XGB_MODEL_PATH, ML_MODELS_DIR
+from ...config import setup_logging, XGB_MODEL_PATH, ML_MODELS_DIR, DEMO_MODE
 from ...utils import DatabaseManager
 
 logger = setup_logging(__name__)
@@ -76,6 +77,33 @@ class ScoreResponse(BaseModel):
     shap_explanation: Optional[dict] = None
 
 
+def _demo_score_response(lat: float, lon: float, explain: bool) -> ScoreResponse:
+    """Return sample score when DEMO_MODE is on (no DB or model)."""
+    # Synthetic 11-digit GEOID from lat/lon for demo consistency
+    geoid = f"{int((lat + 90) * 500) % 100000:05d}{int((lon + 180) * 500) % 1000000:06d}"
+    shap_exp = None
+    if explain:
+        shap_exp = {
+            "top_factors": [
+                {"feature": "heat_annual_mean", "contribution": 0.25},
+                {"feature": "pm25_mean", "contribution": 0.20},
+                {"feature": "svi_composite", "contribution": 0.15},
+            ]
+        }
+    return ScoreResponse(
+        latitude=lat,
+        longitude=lon,
+        geoid=geoid,
+        climate_burden_index=52.3,
+        percentile=65.0,
+        climate_burden_score=0.58,
+        vulnerability_score=0.62,
+        cluster_kmeans=2,
+        cluster_hdbscan=1,
+        shap_explanation=shap_exp,
+    )
+
+
 @router.get("", response_model=ScoreResponse)
 async def get_score(
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
@@ -88,8 +116,12 @@ async def get_score(
     Reverse-geocodes lat/lon to census tract GEOID,
     looks up precomputed features and predictions,
     optionally returns SHAP explanation.
+    In DEMO_MODE (no DB), returns sample data.
     """
     logger.info(f"Score request: lat={lat}, lon={lon}, explain={explain}")
+    
+    if DEMO_MODE:
+        return _demo_score_response(lat, lon, explain)
     
     try:
         # Reverse geocode
@@ -176,6 +208,3 @@ def generate_shap_explanation(geoid: str, prediction_row) -> dict:
     except Exception as e:
         logger.warning(f"SHAP explanation failed: {e}")
         return None
-
-
-import pandas as pd

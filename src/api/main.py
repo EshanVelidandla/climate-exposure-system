@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from ..config import setup_logging, API_HOST, API_PORT
+from ..config import setup_logging, API_HOST, API_PORT, DEMO_MODE
 from .routers import scores, clusters, nlp_insights
 
 logger = setup_logging(__name__)
@@ -52,8 +52,9 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "database": "connected",
-        "models": "loaded",
+        "demo_mode": DEMO_MODE,
+        "database": "connected" if not DEMO_MODE else "not_required",
+        "models": "loaded" if not DEMO_MODE else "not_required",
     }
 
 

@@ -13,8 +13,9 @@ from typing import Optional
 
 from ..config import (
     HEAT_INTERIM, AQS_INTERIM, SVI_INTERIM, TIGER_INTERIM, ESG_INTERIM,
-    FEATURES_OUTPUT, setup_logging, normalize_geoid
+    FEATURES_OUTPUT, setup_logging,
 )
+from ..utils import normalize_geoid
 
 logger = setup_logging(__name__)
 
