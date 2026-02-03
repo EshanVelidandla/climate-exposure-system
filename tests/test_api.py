@@ -109,7 +109,7 @@ class TestErrorHandling:
     def test_missing_parameters(self):
         """Test endpoint with missing required parameters."""
         # Would expect 422 validation error
-        pass
+        pytest.skip("Not implemented: validation integration test placeholder")
     
     def test_database_connection_error(self):
         """Test handling of database connection errors."""
